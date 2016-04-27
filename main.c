@@ -16,7 +16,8 @@ int main(int argc, char *argv[]) {
   struct addrinfo *res;
   struct addrinfo hints;
   char buf[RECV_BUFFER] = {0};
-  char *resp = "HTTP/1.1 404 Not Found\r\n\r\n";
+  char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
+  int wpid;
 
   if (argc != 2) {
     fprintf(stderr, "Usage: %s <port>\n", argv[0]);
@@ -55,28 +56,34 @@ int main(int argc, char *argv[]) {
 
   printf("Listening on port %s ...\n", argv[1]);
 
-
   while(1) {
     clientfd = accept(sockfd, res->ai_addr, &(res->ai_addrlen));
     if (clientfd < 0) {
       err(EXIT_FAILURE, "Socket accept error");
     }
-    printf("Accepted connection! (fd: %d)\n", clientfd);
 
-    // MOVE TO FORK OR SOMETHNG
-    while(1) {
+    wpid = fork();
+    if (wpid > 0) { /* parent */
+      close(clientfd);
+    } else if (wpid == 0) { /* child */
+      printf("[worker-%d] Accepted connection! (fd: %d)\n", getpid(), clientfd);
+      /* TODO: We assume that we got the full message in a single read */
       status = recv(clientfd, &buf, RECV_BUFFER-1, 0);
       if (status < 0) {
         err(EXIT_FAILURE, "Message recv error");
       } else if (status == 0) {
         printf("Connection closed by the client.\n");
         close(clientfd);
-        break;
+        exit(0);
       } else {
         buf[RECV_BUFFER-1] = '\0';
         printf("%.*s", status+1, buf);
         send(clientfd, resp, strlen(resp), 0);
+        close(clientfd);
+        exit(1);
       }
+    } else {
+      err(EXIT_FAILURE, "Worker fork error");
     }
   }
 
