@@ -106,7 +106,6 @@ int main(int argc, char *argv[]) {
       }
 
       FD_SET(clientfd, &rfds);
-      FD_SET(clientfd, &wfds);
 
       printf("Accepted connection! (fd: %d)\n", clientfd);
     }
@@ -119,21 +118,23 @@ int main(int argc, char *argv[]) {
 
       if (FD_ISSET(fd, &rfds)) {
         /* TODO: We assume that we got the full message in a single read */
-        status = recv(fd, &buf, RECV_BUFFER-1, MSG_DONTWAIT);
+        status = recv(fd, &buf, RECV_BUFFER-1, 0);
 
-        if (status < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-          printf("WOULDBLOCK fd %d, retrying...\n", fd);
-        } else if (status < 0) {
+        if (status < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
           err(EXIT_FAILURE, "Message recv error (client: %d)\n", fd);
         } else if (status == 0) {
           printf("Connection closed by client %d.\n", fd);
           close_client(fd, &rfds, &wfds, clientfds, MAX_CLIENTS);
-        } else {
+        } else if (status > 0) {
           buf[RECV_BUFFER-1] = '\0';
           printf("Message from client %d: %.*s", fd, status+1, buf);
-          //close_client(fd, &rfds, &wfds, clientfds, MAX_CLIENTS);
-          //send(clientfd, resp, strlen(resp), 0);
+          FD_SET(fd, &wfds);
         }
+      }
+
+      if (FD_ISSET(fd, &wfds)) {
+        send(fd, resp, strlen(resp), 0);
+        close_client(fd, &rfds, &wfds, clientfds, MAX_CLIENTS);
       }
     }
   }
