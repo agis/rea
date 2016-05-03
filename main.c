@@ -8,9 +8,8 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <netdb.h>
-#include <sys/fcntl.h>
 
-#define MAX_CLIENTS 1000
+#define MAX_CLIENTS 1500
 #define RECV_BUFFER 3000
 
 void close_client(int fd, fd_set *rfds, fd_set *wfds, int clientfds[], int clen);
@@ -20,9 +19,10 @@ int main(int argc, char *argv[]) {
   struct addrinfo *res;
   struct addrinfo hints;
   char buf[RECV_BUFFER] = {0};
-  char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
+  //char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
   int clientfds[MAX_CLIENTS] = {0};
   fd_set rfds, wfds;
+  int parent = 0;
 
   if (argc != 2) {
     fprintf(stderr, "Usage: %s <port>\n", argv[0]);
@@ -60,84 +60,108 @@ int main(int argc, char *argv[]) {
 
   printf("Listening on port %s ...\n", argv[1]);
 
-  while(1) {
-    FD_ZERO(&rfds);
-    FD_ZERO(&wfds);
-    FD_SET(sockfd, &rfds);
-    nfds = sockfd;
-
-    for (i = 0; i < MAX_CLIENTS; i++) {
-      if ((fd = clientfds[i]) > 0) {
-        FD_SET(fd, &rfds);
-        if (fd > nfds) {
-          nfds = fd;
-        }
+  for (i=0; i < 4; i++) {
+    status = fork();
+    if (status > 0) {
+      parent = 1;
+      printf("Spawned worker [%d]\n", status);
+      if (i==3) {
+        printf("All workers spawned, looping...\n");
       }
-    }
+    } else if (status == 0) {
+        char resp[200];
+        //char *resp;
+        sprintf(resp, "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nCool [%d]\r\n\r\n", getpid());
+//      parent = 0;
+//      char *resp1 = "Cool from ";
+//      char *wpid;
+//      sprintf(wpid, "%d", getpid());
+//      printf("i'm the child mofo\n");
+//      printf("%s\n", wpid);
+      while(1) {
+        FD_ZERO(&rfds);
+        FD_ZERO(&wfds);
+        FD_SET(sockfd, &rfds);
+        nfds = sockfd;
 
-    /* TODO: also add exception set */
-    status = select(nfds+1, &rfds, &wfds, NULL, NULL);
-    if (status < 0) {
-      err(EXIT_FAILURE, "Socket select error");
-    }
-
-    if (FD_ISSET(sockfd, &rfds)) {
-      clientfd = accept4(sockfd, res->ai_addr, &(res->ai_addrlen), SOCK_NONBLOCK);
-      if (clientfd < 0) {
-        printf("%d\n", clientfd);
-        err(EXIT_FAILURE, "Socket accept error");
-      }
-
-      added = 0;
-      for (i = 0; i < MAX_CLIENTS; i++) {
-        if (clientfds[i] == 0) {
-          clientfds[i] = clientfd;
-          added = 1;
-          if (clientfd > nfds) {
-            nfds = clientfd;
+        for (i = 0; i < MAX_CLIENTS; i++) {
+          if ((fd = clientfds[i]) > 0) {
+            FD_SET(fd, &rfds);
+            if (fd > nfds) {
+              nfds = fd;
+            }
           }
-          break;
         }
-      }
 
-      if (!added) {
-        fprintf(stderr, "Could not find room to monitor client fd: %d", clientfd);
-        exit(EXIT_FAILURE);
-      }
-
-      FD_SET(clientfd, &rfds);
-
-      printf("Accepted connection! (fd: %d)\n", clientfd);
-    }
-
-    for (i = 0; i < MAX_CLIENTS; i++) {
-      fd = clientfds[i];
-      if (fd == 0) {
-        continue;
-      }
-
-      if (FD_ISSET(fd, &rfds)) {
-        /* TODO: We assume that we got the full message in a single read */
-        status = recv(fd, &buf, RECV_BUFFER-1, 0);
-
-        if (status < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-          err(EXIT_FAILURE, "Message recv error (client: %d)\n", fd);
-        } else if (status == 0) {
-          printf("Connection closed by client %d.\n", fd);
-          close_client(fd, &rfds, &wfds, clientfds, MAX_CLIENTS);
-        } else if (status > 0) {
-          buf[RECV_BUFFER-1] = '\0';
-          printf("Message from client %d: %.*s", fd, status+1, buf);
-          FD_SET(fd, &wfds);
+        /* TODO: also add exception set */
+        status = select(nfds+1, &rfds, &wfds, NULL, NULL);
+        if (status < 0) {
+          err(EXIT_FAILURE, "Socket select error");
         }
-      }
 
-      if (FD_ISSET(fd, &wfds)) {
-        send(fd, resp, strlen(resp), 0);
-        close_client(fd, &rfds, &wfds, clientfds, MAX_CLIENTS);
+        if (FD_ISSET(sockfd, &rfds)) {
+          clientfd = accept4(sockfd, res->ai_addr, &(res->ai_addrlen), SOCK_NONBLOCK);
+          /* TODO: handle EAGAIN/EWOULDBLOCK too */
+          if (clientfd < 0) {
+            printf("%d\n", errno);
+            err(EXIT_FAILURE, "Socket accept error");
+          }
+
+          added = 0;
+          for (i = 0; i < MAX_CLIENTS; i++) {
+            if (clientfds[i] == 0) {
+              clientfds[i] = clientfd;
+              added = 1;
+              if (clientfd > nfds) {
+                nfds = clientfd;
+              }
+              break;
+            }
+          }
+
+          if (!added) {
+            fprintf(stderr, "Could not find room to monitor client fd: %d", clientfd);
+            exit(EXIT_FAILURE);
+          }
+
+          FD_SET(clientfd, &rfds);
+
+          //printf("Accepted connection! (fd: %d)\n", clientfd);
+        }
+
+        for (i = 0; i < MAX_CLIENTS; i++) {
+          fd = clientfds[i];
+          if (fd == 0) {
+            continue;
+          }
+
+          if (FD_ISSET(fd, &rfds)) {
+            /* TODO: We assume that we got the full message in a single read */
+            status = recv(fd, &buf, RECV_BUFFER-1, 0);
+
+            if (status < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+              err(EXIT_FAILURE, "Message recv error (client: %d)\n", fd);
+            } else if (status == 0) {
+              //printf("Connection closed by client %d.\n", fd);
+              close_client(fd, &rfds, &wfds, clientfds, MAX_CLIENTS);
+            } else if (status > 0) {
+              buf[RECV_BUFFER-1] = '\0';
+              //printf("Message from client %d: %.*s", fd, status+1, buf);
+              FD_SET(fd, &wfds);
+            }
+          }
+
+          if (FD_ISSET(fd, &wfds)) {
+            send(fd, resp, strlen(resp), 0);
+            close_client(fd, &rfds, &wfds, clientfds, MAX_CLIENTS);
+          }
+        }
       }
     }
   }
+
+  if (parent)
+    sleep(99999);
 
   status = close(sockfd);
   if (status != 0) {
