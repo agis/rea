@@ -84,8 +84,12 @@ int main(int argc, char *argv[]) {
     if (FD_ISSET(sockfd, &rfds)) {
       clientfd = accept4(sockfd, res->ai_addr, &(res->ai_addrlen), SOCK_NONBLOCK);
       if (clientfd < 0) {
-        printf("%d\n", clientfd);
-        err(EXIT_FAILURE, "Socket accept error");
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+          continue;
+        } else {
+          printf("%d\n", clientfd);
+          err(EXIT_FAILURE, "Socket accept error");
+        }
       }
 
       added = 0;
