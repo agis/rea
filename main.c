@@ -10,7 +10,7 @@
 #include <netdb.h>
 #include <sys/fcntl.h>
 
-#define MAX_CLIENTS 20
+#define MAX_CLIENTS 1000
 #define RECV_BUFFER 3000
 
 void close_client(int fd, fd_set *rfds, fd_set *wfds, int clientfds[], int clen);
