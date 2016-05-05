@@ -8,7 +8,6 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <netdb.h>
-#include <sys/fcntl.h>
 
 #define MAX_CLIENTS 1000
 #define RECV_BUFFER 3000
