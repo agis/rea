@@ -9,8 +9,8 @@
 #include <sys/select.h>
 #include <netdb.h>
 
-#define MAX_CLIENTS 1000
-#define RECV_BUFFER 3000
+#define MAX_CLIENTS 4096
+#define RECV_BUFFER 4096
 
 void close_client(int fd, fd_set *rfds, fd_set *wfds, int clientfds[], int clen);
 
