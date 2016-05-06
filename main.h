@@ -13,6 +13,12 @@ struct Client {
 };
 
 /*
+ * Creates a listening socket, binds it the port specified by p and returns
+ * its file descriptor.
+ */
+int setup_and_listen(char *p);
+
+/*
  * make_client Initializes a new Client from the given file descriptor and
  * returns a pointer to it.
  */

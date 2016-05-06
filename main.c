@@ -12,8 +12,6 @@
 
 int main(int argc, char *argv[]) {
 	int status, sockfd, clientfd, maxfd, i, fd, added;
-	struct addrinfo *res;
-	struct addrinfo hints;
 	char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
 	fd_set rfds, wfds;
 	struct Client *clients[MAX_CLIENTS];
@@ -25,36 +23,7 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET; /* Allow IPv4 for now */
-	hints.ai_socktype = SOCK_STREAM; /* TCP socket */
-	hints.ai_flags = AI_PASSIVE; /* For wildcard IP address */
-
-	if ((status = getaddrinfo(NULL, argv[1], &hints, &res)) != 0) {
-		fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
-		exit(EXIT_FAILURE);
-	}
-
-	/*
-	 * Normally only a single protocol exists to support a particular
-	 * socket [type, protocol family] combination, so we can skip specifying it
-	 */
-	sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
-	if (sockfd < 0) {
-		err(EXIT_FAILURE, "Socket creation error");
-	}
-
-	status = bind(sockfd, res->ai_addr, res->ai_addrlen);
-	if (status != 0) {
-		err(EXIT_FAILURE, "Socket bind error");
-	}
-
-	status = listen(sockfd, RECV_BACKLOG);
-	if (status != 0) {
-		err(EXIT_FAILURE, "Socket listen error");
-	}
-
-	printf("Listening on port %s ...\n", argv[1]);
+	sockfd = setup_and_listen(argv[1]);
 
 	while(1) {
 		FD_ZERO(&rfds);
@@ -64,11 +33,11 @@ int main(int argc, char *argv[]) {
 
 		for (i = 0; i < MAX_CLIENTS; i++) {
 			if (clients[i]) {
-			fd = clients[i]->fd;
-			FD_SET(fd, &rfds);
-			if (fd > maxfd) {
-				maxfd = fd;
-			}
+				fd = clients[i]->fd;
+				FD_SET(fd, &rfds);
+				if (fd > maxfd) {
+					maxfd = fd;
+				}
 			}
 		}
 
@@ -83,10 +52,9 @@ int main(int argc, char *argv[]) {
 			if (clientfd < 0) {
 				if (errno == EAGAIN || errno == EWOULDBLOCK) {
 					continue;
-				} else {
-					printf("%d\n", clientfd);
-					err(EXIT_FAILURE, "Socket accept error");
 				}
+				printf("%d\n", clientfd);
+				err(EXIT_FAILURE, "Socket accept error");
 			}
 
 			added = 0;
@@ -150,6 +118,62 @@ int main(int argc, char *argv[]) {
 	freeaddrinfo(res);
 }
 
+int setup_and_listen(char *p) {
+	int status, fd;
+	struct addrinfo *res;
+	struct addrinfo hints;
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET; /* Only IPv4 for now */
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE; /* Listen on all network addresses */
+
+	if ((status = getaddrinfo(NULL, p, &hints, &res)) != 0) {
+		fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+		exit(EXIT_FAILURE);
+	}
+
+	/*
+	 * Normally only a single protocol exists to support a particular
+	 * socket [type, protocol family] combination, so we can skip specifying it
+	 */
+	fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+	if (fd < 0) {
+		err(EXIT_FAILURE, "Socket creation error");
+	}
+
+	status = bind(fd, res->ai_addr, res->ai_addrlen);
+	if (status != 0) {
+		err(EXIT_FAILURE, "Socket bind error");
+	}
+
+	status = listen(fd, RECV_BACKLOG);
+	if (status != 0) {
+		err(EXIT_FAILURE, "Socket listen error");
+	}
+
+	printf("Listening on 0.0.0.0:%s ...\n", p);
+
+	return fd;
+}
+
+struct Client *make_client(int fd) {
+	int i;
+
+	struct Client *c = (struct Client *)malloc(sizeof(struct Client));
+	if (!c) {
+		fprintf(stderr, "Couldn't allocate memory for connection %d\n", fd);
+		exit(EXIT_FAILURE);
+	}
+
+	c->fd = fd;
+	for (i = 0; i < RECV_BUFFER; i++) {
+		c->buf[i] = '\0';
+	}
+
+	return c;
+}
+
 void close_client(int fd, fd_set *rfds, fd_set *wfds, struct Client *clients[]) {
 	int i;
 
@@ -167,22 +191,4 @@ void close_client(int fd, fd_set *rfds, fd_set *wfds, struct Client *clients[]) 
 			clients[i] = 0;
 		}
 	}
-}
-
-struct Client *make_client(int fd) {
-	int i;
-
-	struct Client *c = (struct Client *)malloc(sizeof(struct Client));
-	if (!c) {
-		fprintf(stderr, "Couldn't allocate memory for connection %d\n", fd);
-		exit(EXIT_FAILURE);
-	}
-
-	c->fd = fd;
-
-	for (i = 0; i < RECV_BUFFER; i++) {
-		c->buf[i] = 0;
-	}
-
-	return c;
 }
