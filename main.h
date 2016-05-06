@@ -5,6 +5,11 @@
 #define RECV_BUFFER 4096
 #define RECV_BACKLOG 50
 
+struct Server {
+	int fd;
+	struct addrinfo *addr;
+};
+
 /* Client represents a connection of an active client. */
 struct Client {
 	int fd;
@@ -13,10 +18,10 @@ struct Client {
 };
 
 /*
- * Creates a listening socket, binds it the port specified by p and returns
- * its file descriptor.
+ * Creates a listening socket, binds it to the specified port and returns
+ * a pointer to an initialized Server.
  */
-int setup_and_listen(char *p);
+struct Server * setup_and_listen(char *port);
 
 /*
  * make_client Initializes a new Client from the given file descriptor and

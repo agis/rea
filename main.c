@@ -11,9 +11,10 @@
 #include "main.h"
 
 int main(int argc, char *argv[]) {
-	int status, sockfd, clientfd, maxfd, i, fd, added;
+	int status, clientfd, maxfd, i, fd, added;
 	char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
 	fd_set rfds, wfds;
+	struct Server *server;
 	struct Client *clients[MAX_CLIENTS];
 
 	memset(clients, 0, sizeof(struct Client*)*MAX_CLIENTS);
@@ -23,13 +24,13 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
-	sockfd = setup_and_listen(argv[1]);
+	server = setup_and_listen(argv[1]);
 
 	while(1) {
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
-		FD_SET(sockfd, &rfds);
-		maxfd = sockfd;
+		FD_SET(server->fd, &rfds);
+		maxfd = server->fd;
 
 		for (i = 0; i < MAX_CLIENTS; i++) {
 			if (clients[i]) {
@@ -47,8 +48,8 @@ int main(int argc, char *argv[]) {
 			err(EXIT_FAILURE, "Socket select error");
 		}
 
-		if (FD_ISSET(sockfd, &rfds)) {
-			clientfd = accept4(sockfd, res->ai_addr, &(res->ai_addrlen), SOCK_NONBLOCK);
+		if (FD_ISSET(server->fd, &rfds)) {
+			clientfd = accept4(server->fd, server->addr->ai_addr, &(server->addr->ai_addrlen), SOCK_NONBLOCK);
 			if (clientfd < 0) {
 				if (errno == EAGAIN || errno == EWOULDBLOCK) {
 					continue;
@@ -110,25 +111,30 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	status = close(sockfd);
+	status = close(server->fd);
 	if (status != 0) {
 		err(EXIT_FAILURE, "Socket cleanup error");
 	}
 
-	freeaddrinfo(res);
+	freeaddrinfo(server->addr);
 }
 
-int setup_and_listen(char *p) {
+struct Server * setup_and_listen(char *port) {
 	int status, fd;
-	struct addrinfo *res;
+	struct addrinfo *ai;
 	struct addrinfo hints;
+	struct Server *s = (struct Server *)malloc(sizeof(struct Server));
+	if (!s) {
+		fprintf(stderr, "Couldn't allocate memory for starting the server\n");
+		exit(EXIT_FAILURE);
+	}
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET; /* Only IPv4 for now */
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE; /* Listen on all network addresses */
 
-	if ((status = getaddrinfo(NULL, p, &hints, &res)) != 0) {
+	if ((status = getaddrinfo(NULL, port, &hints, &ai)) != 0) {
 		fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
 		exit(EXIT_FAILURE);
 	}
@@ -142,7 +148,7 @@ int setup_and_listen(char *p) {
 		err(EXIT_FAILURE, "Socket creation error");
 	}
 
-	status = bind(fd, res->ai_addr, res->ai_addrlen);
+	status = bind(fd, ai->ai_addr, ai->ai_addrlen);
 	if (status != 0) {
 		err(EXIT_FAILURE, "Socket bind error");
 	}
@@ -152,12 +158,15 @@ int setup_and_listen(char *p) {
 		err(EXIT_FAILURE, "Socket listen error");
 	}
 
-	printf("Listening on 0.0.0.0:%s ...\n", p);
+	s->fd = fd;
+	s->addr = ai;
 
-	return fd;
+	printf("Listening on 0.0.0.0:%s ...\n", port);
+
+	return s;
 }
 
-struct Client *make_client(int fd) {
+struct Client * make_client(int fd) {
 	int i;
 
 	struct Client *c = (struct Client *)malloc(sizeof(struct Client));
