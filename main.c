@@ -11,7 +11,7 @@
 #include "main.h"
 
 int main(int argc, char *argv[]) {
-	int status, clientfd, maxfd, i, fd, added;
+	int status, maxfd, i, fd, added;
 	char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
 	fd_set rfds, wfds;
 	struct Server *server;
@@ -49,35 +49,35 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (FD_ISSET(server->fd, &rfds)) {
-			clientfd = accept4(server->fd, server->addr->ai_addr, &(server->addr->ai_addrlen), SOCK_NONBLOCK);
-			if (clientfd < 0) {
+			fd = accept4(server->fd, server->addr->ai_addr, &(server->addr->ai_addrlen), SOCK_NONBLOCK);
+			if (fd < 0) {
 				if (errno == EAGAIN || errno == EWOULDBLOCK) {
 					continue;
 				}
-				printf("%d\n", clientfd);
+				printf("%d\n", fd);
 				err(EXIT_FAILURE, "Socket accept error");
 			}
 
 			added = 0;
 			for (i = 0; i < MAX_CLIENTS; i++) {
 				if (!clients[i]) {
-					clients[i] = make_client(clientfd);
+					clients[i] = make_client(fd);
 					added = 1;
-					if (clientfd > maxfd) {
-						maxfd = clientfd;
+					if (fd > maxfd) {
+						maxfd = fd;
 					}
 					break;
 				}
 			}
 
 			if (!added) {
-				fprintf(stderr, "Could not find room for client fd: %d", clientfd);
+				fprintf(stderr, "Could not find room for client fd: %d\n", fd);
 				exit(EXIT_FAILURE);
 			}
 
-			FD_SET(clientfd, &rfds);
+			FD_SET(fd, &rfds);
 
-			printf("Accepted connection! (fd: %d)\n", clientfd);
+			printf("Accepted connection! (fd: %d)\n", fd);
 		}
 
 		for (i = 0; i < MAX_CLIENTS; i++) {
