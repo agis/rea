@@ -167,9 +167,7 @@ struct Client *make_client(int fd) {
 	}
 
 	c->fd = fd;
-	for (i = 0; i < RECV_BUFFER; i++) {
-		c->buf[i] = '\0';
-	}
+	memset(c->buf, 0, RECV_BUFFER);
 
 	return c;
 }
