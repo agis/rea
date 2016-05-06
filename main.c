@@ -8,11 +8,7 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <netdb.h>
-
-#define MAX_CLIENTS 4096
-#define RECV_BUFFER 4096
-
-void close_client(int fd, fd_set *rfds, fd_set *wfds, int clientfds[], int clen);
+#include "main.h"
 
 int main(int argc, char *argv[]) {
   int status, sockfd, clientfd, nfds, i, fd, added;
@@ -22,6 +18,10 @@ int main(int argc, char *argv[]) {
   char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
   int clientfds[MAX_CLIENTS] = {0};
   fd_set rfds, wfds;
+  struct clientCon *conns[MAX_CLIENTS];
+  struct clientCon *con;
+
+  memset(conns, 0, MAX_CLIENTS-1);
 
   if (argc != 2) {
     fprintf(stderr, "Usage: %s <port>\n", argv[0]);
@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
     err(EXIT_FAILURE, "Socket bind error");
   }
 
-  status = listen(sockfd, MAX_CLIENTS);
+  status = listen(sockfd, RECV_BACKLOG);
   if (status != 0) {
     err(EXIT_FAILURE, "Socket listen error");
   }
@@ -66,7 +66,8 @@ int main(int argc, char *argv[]) {
     nfds = sockfd;
 
     for (i = 0; i < MAX_CLIENTS; i++) {
-      if ((fd = clientfds[i]) > 0) {
+      if (conns[i]) {
+        fd = conns[i]->fd;
         FD_SET(fd, &rfds);
         if (fd > nfds) {
           nfds = fd;
@@ -93,8 +94,8 @@ int main(int argc, char *argv[]) {
 
       added = 0;
       for (i = 0; i < MAX_CLIENTS; i++) {
-        if (clientfds[i] == 0) {
-          clientfds[i] = clientfd;
+        if (!conns[i]) {
+          conns[i] = make_conn(clientfd);
           added = 1;
           if (clientfd > nfds) {
             nfds = clientfd;
@@ -114,30 +115,32 @@ int main(int argc, char *argv[]) {
     }
 
     for (i = 0; i < MAX_CLIENTS; i++) {
-      fd = clientfds[i];
-      if (fd == 0) {
+      if (!conns[i]) {
         continue;
       }
 
-      if (FD_ISSET(fd, &rfds)) {
+      con = conns[i];
+
+      if (FD_ISSET(con->fd, &rfds)) {
         /* TODO: We assume that we got the full message in a single read */
-        status = recv(fd, &buf, RECV_BUFFER-1, 0);
+        status = recv(con->fd, &(con->buf), RECV_BUFFER-1, 0);
 
         if (status < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-          err(EXIT_FAILURE, "Message recv error (client: %d)\n", fd);
+          err(EXIT_FAILURE, "Message recv error (client: %d)\n", con->fd);
         } else if (status == 0) {
-          printf("Connection closed by client %d.\n", fd);
-          close_client(fd, &rfds, &wfds, clientfds, MAX_CLIENTS);
+          printf("Connection closed by client %d.\n", con->fd);
+          close_client(con->fd, &rfds, &wfds, conns);
+          break;
         } else if (status > 0) {
-          buf[RECV_BUFFER-1] = '\0';
-          printf("Message from client %d: %.*s", fd, status+1, buf);
-          FD_SET(fd, &wfds);
+          con->buf[RECV_BUFFER-1] = '\0';
+          printf("Message from client %d: %.*s\n", con->fd, status+1, con->buf);
+          FD_SET(con->fd, &wfds);
         }
       }
 
-      if (FD_ISSET(fd, &wfds)) {
-        send(fd, resp, strlen(resp), 0);
-        close_client(fd, &rfds, &wfds, clientfds, MAX_CLIENTS);
+      if (FD_ISSET(con->fd, &wfds)) {
+        send(con->fd, resp, strlen(resp), 0);
+        close_client(con->fd, &rfds, &wfds, conns);
       }
     }
   }
@@ -150,7 +153,7 @@ int main(int argc, char *argv[]) {
   freeaddrinfo(res);
 }
 
-void close_client(int fd, fd_set *rfds, fd_set *wfds, int clientfds[], int clen) {
+void close_client(int fd, fd_set *rfds, fd_set *wfds, struct clientCon *conns[]) {
   int i;
 
   if (close(fd) < 0) {
@@ -160,9 +163,28 @@ void close_client(int fd, fd_set *rfds, fd_set *wfds, int clientfds[], int clen)
 
   FD_CLR(fd, rfds);
   FD_CLR(fd, wfds);
-  for (i = 0; i < clen; i++) {
-    if (clientfds[i] == fd) {
-      clientfds[i] = 0;
+  for (i = 0; i < MAX_CLIENTS; i++) {
+    if (conns[i] && conns[i]->fd == fd) {
+      conns[i] = 0;
+      //TODO: free mem.
     }
   }
+}
+
+// TODO: check that fd > 0
+struct clientCon *make_conn(int fd) {
+  int i;
+  struct clientCon *c = (struct clientCon *)malloc(sizeof(struct clientCon));
+  if (!c) {
+    fprintf(stderr, "Couldn't allocate memory for connection %d\n", fd);
+    exit(EXIT_FAILURE);
+  }
+
+  c->fd = fd;
+
+  for (i = 0; i < RECV_BUFFER; i++) {
+    c->buf[i] = 0;
+  }
+
+  return c;
 }
