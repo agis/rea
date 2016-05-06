@@ -12,7 +12,9 @@ struct clientCon {
   char buf[RECV_BUFFER];
 };
 
-void close_client(int fd, fd_set *rfds, fd_set *wfds, struct clientCon *conns[]);
 struct clientCon *make_conn(int fd);
+
+void close_client(int fd, fd_set *rfds, fd_set *wfds, struct clientCon *conns[]);
+
 
 #endif

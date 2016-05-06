@@ -14,14 +14,11 @@ int main(int argc, char *argv[]) {
   int status, sockfd, clientfd, nfds, i, fd, added;
   struct addrinfo *res;
   struct addrinfo hints;
-  char buf[RECV_BUFFER] = {0};
   char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
-  int clientfds[MAX_CLIENTS] = {0};
   fd_set rfds, wfds;
   struct clientCon *conns[MAX_CLIENTS];
-  struct clientCon *con;
 
-  memset(conns, 0, MAX_CLIENTS-1);
+  memset(conns, 0, sizeof(struct clientCon*)*MAX_CLIENTS);
 
   if (argc != 2) {
     fprintf(stderr, "Usage: %s <port>\n", argv[0]);
@@ -119,28 +116,28 @@ int main(int argc, char *argv[]) {
         continue;
       }
 
-      con = conns[i];
+      fd = conns[i]->fd;
 
-      if (FD_ISSET(con->fd, &rfds)) {
+      if (FD_ISSET(fd, &rfds)) {
         /* TODO: We assume that we got the full message in a single read */
-        status = recv(con->fd, &(con->buf), RECV_BUFFER-1, 0);
+        status = recv(fd, &(conns[i]->buf), RECV_BUFFER-1, 0);
 
         if (status < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-          err(EXIT_FAILURE, "Message recv error (client: %d)\n", con->fd);
+          err(EXIT_FAILURE, "Message recv error (client: %d)\n", fd);
         } else if (status == 0) {
-          printf("Connection closed by client %d.\n", con->fd);
-          close_client(con->fd, &rfds, &wfds, conns);
+          printf("Connection closed by client %d.\n", fd);
+          close_client(fd, &rfds, &wfds, conns);
           break;
         } else if (status > 0) {
-          con->buf[RECV_BUFFER-1] = '\0';
-          printf("Message from client %d: %.*s\n", con->fd, status+1, con->buf);
-          FD_SET(con->fd, &wfds);
+          conns[i]->buf[RECV_BUFFER-1] = '\0';
+          printf("Message from client %d: %.*s\n", fd, status+1, conns[i]->buf);
+          FD_SET(fd, &wfds);
         }
       }
 
-      if (FD_ISSET(con->fd, &wfds)) {
-        send(con->fd, resp, strlen(resp), 0);
-        close_client(con->fd, &rfds, &wfds, conns);
+      if (FD_ISSET(fd, &wfds)) {
+        send(fd, resp, strlen(resp), 0);
+        close_client(fd, &rfds, &wfds, conns);
       }
     }
   }
@@ -163,17 +160,18 @@ void close_client(int fd, fd_set *rfds, fd_set *wfds, struct clientCon *conns[])
 
   FD_CLR(fd, rfds);
   FD_CLR(fd, wfds);
+
   for (i = 0; i < MAX_CLIENTS; i++) {
     if (conns[i] && conns[i]->fd == fd) {
+      free(conns[i]);
       conns[i] = 0;
-      //TODO: free mem.
     }
   }
 }
 
-// TODO: check that fd > 0
 struct clientCon *make_conn(int fd) {
   int i;
+
   struct clientCon *c = (struct clientCon *)malloc(sizeof(struct clientCon));
   if (!c) {
     fprintf(stderr, "Couldn't allocate memory for connection %d\n", fd);
