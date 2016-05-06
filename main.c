@@ -189,6 +189,7 @@ void close_client(int fd, fd_set *rfds, fd_set *wfds, struct Client *clients[]) 
 		if (clients[i] && clients[i]->fd == fd) {
 			free(clients[i]);
 			clients[i] = 0;
+			return;
 		}
 	}
 }
