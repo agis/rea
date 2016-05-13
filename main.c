@@ -7,8 +7,11 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>
+#include <signal.h>
 #include <netdb.h>
 #include "main.h"
+
+void sigint_handler(int sig);
 
 int main(int argc, char *argv[]) {
 	int status, maxfd, i, fd, added;
@@ -25,6 +28,10 @@ int main(int argc, char *argv[]) {
 	}
 
 	server = setup_and_listen(argv[1]);
+
+  struct sigaction act;
+  act.sa_handler = (void *)(sigint_handler);
+  sigaction(SIGINT, &act, NULL);
 
 	while(1) {
 		FD_ZERO(&rfds);
@@ -199,4 +206,8 @@ void close_client(int fd, fd_set *rfds, fd_set *wfds, struct Client *clients[]) 
 			return;
 		}
 	}
+}
+
+void sigint_handler(int sig) {
+  printf("sig received!\n");
 }
