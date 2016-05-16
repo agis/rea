@@ -11,13 +11,10 @@
 #include <netdb.h>
 #include "main.h"
 
-void sigint_handler(int sig);
-
 int main(int argc, char *argv[]) {
 	int status, maxfd, i, fd, added;
 	char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
 	fd_set rfds, wfds;
-	struct Server *server;
 	struct Client *clients[MAX_CLIENTS];
 
 	memset(clients, 0, sizeof(struct Client*)*MAX_CLIENTS);
@@ -27,11 +24,8 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
-	server = setup_and_listen(argv[1]);
-
-  struct sigaction act;
-  act.sa_handler = (void *)(sigint_handler);
-  sigaction(SIGINT, &act, NULL);
+	setup_and_listen(argv[1]);
+	setup_sighandlers();
 
 	while(1) {
 		FD_ZERO(&rfds);
@@ -117,21 +111,14 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
-
-	status = close(server->fd);
-	if (status != 0) {
-		err(EXIT_FAILURE, "Socket cleanup error");
-	}
-
-	freeaddrinfo(server->addr);
 }
 
-struct Server * setup_and_listen(char *port) {
+void setup_and_listen(char *port) {
 	int status, fd;
 	struct addrinfo *ai;
 	struct addrinfo hints;
-	struct Server *s = (struct Server *)malloc(sizeof(struct Server));
-	if (!s) {
+	server = (struct Server *)malloc(sizeof(struct Server));
+	if (!server) {
 		fprintf(stderr, "Couldn't allocate memory for starting the server\n");
 		exit(EXIT_FAILURE);
 	}
@@ -165,12 +152,10 @@ struct Server * setup_and_listen(char *port) {
 		err(EXIT_FAILURE, "Socket listen error");
 	}
 
-	s->fd = fd;
-	s->addr = ai;
+	server->fd = fd;
+	server->addr = ai;
 
 	printf("Listening on 0.0.0.0:%s ...\n", port);
-
-	return s;
 }
 
 struct Client * make_client(int fd) {
@@ -208,6 +193,25 @@ void close_client(int fd, fd_set *rfds, fd_set *wfds, struct Client *clients[]) 
 	}
 }
 
-void sigint_handler(int sig) {
-  printf("sig received!\n");
+void setup_sighandlers(void) {
+	struct sigaction act;
+	act.sa_handler = shutdown_server;
+
+	int status = sigaction(SIGINT, &act, NULL);
+	if (status != 0) {
+		err(EXIT_FAILURE, "Error setting up signal handler\n");
+	}
+}
+
+void shutdown_server(int sig) {
+	printf("\nShutting down...\n");
+
+	int status = close(server->fd);
+	if (status != 0) {
+		err(EXIT_FAILURE, "Socket cleanup error");
+	}
+
+	freeaddrinfo(server->addr);
+	printf("Goodbye!\n");
+	exit(EXIT_SUCCESS);
 }

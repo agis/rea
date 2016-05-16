@@ -10,6 +10,9 @@ struct Server {
 	struct addrinfo *addr;
 };
 
+/* server is the global Server instance */
+struct Server *server;
+
 /* Client represents a connection of an active client. */
 struct Client {
 	int fd;
@@ -18,10 +21,20 @@ struct Client {
 };
 
 /*
- * Creates a listening socket, binds it to the specified port and returns
- * a pointer to an initialized Server.
+ * Creates a Server on a listening socket, binds it to the specified port and
+ * sets its to the server global variable
  */
-struct Server * setup_and_listen(char *port);
+void setup_and_listen(char *port);
+
+/*
+ * Registers signal handlers for shutting down the server gracefully etc.
+ */
+void setup_sighandlers(void);
+
+/*
+ * Shuts down the server gracefully
+ */
+void shutdown_server(int sig);
 
 /*
  * make_client Initializes a new Client from the given file descriptor and
