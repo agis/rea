@@ -115,8 +115,9 @@ int main(int argc, char *argv[]) {
 
 void setup_and_listen(char *port) {
 	int status, fd;
-	struct addrinfo *ai;
 	struct addrinfo hints;
+	struct addrinfo *ai;
+
 	server = (struct Server *)malloc(sizeof(struct Server));
 	if (!server) {
 		fprintf(stderr, "Couldn't allocate memory for starting the server\n");
