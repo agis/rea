@@ -25,7 +25,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	setup_and_listen(argv[1]);
-	setup_sighandlers();
 
 	while(1) {
 		FD_ZERO(&rfds);
@@ -155,6 +154,8 @@ void setup_and_listen(char *port) {
 
 	server->fd = fd;
 	server->addr = ai;
+
+	setup_sighandlers();
 
 	printf("Listening on 0.0.0.0:%s ...\n", port);
 }
