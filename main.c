@@ -11,7 +11,8 @@
 #include <netdb.h>
 #include "main.h"
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
 	int status, maxfd, i, fd, added;
 	char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
 	fd_set rfds, wfds;
@@ -112,7 +113,8 @@ int main(int argc, char *argv[]) {
 	}
 }
 
-void setup_and_listen(char *port) {
+void setup_and_listen(char *port)
+{
 	int status, fd;
 	struct addrinfo hints;
 	struct addrinfo *ai;
@@ -160,7 +162,8 @@ void setup_and_listen(char *port) {
 	printf("Listening on 0.0.0.0:%s ...\n", port);
 }
 
-struct Client * make_client(int fd) {
+struct Client * make_client(int fd)
+{
 	int i;
 
 	struct Client *c = (struct Client *)malloc(sizeof(struct Client));
@@ -175,7 +178,8 @@ struct Client * make_client(int fd) {
 	return c;
 }
 
-void close_client(int fd, fd_set *rfds, fd_set *wfds, struct Client *clients[]) {
+void close_client(int fd, fd_set *rfds, fd_set *wfds, struct Client *clients[])
+{
 	int i;
 
 	if (close(fd) < 0) {
@@ -195,7 +199,8 @@ void close_client(int fd, fd_set *rfds, fd_set *wfds, struct Client *clients[]) 
 	}
 }
 
-void setup_sighandlers(void) {
+void setup_sighandlers(void)
+{
 	struct sigaction act;
 	act.sa_handler = shutdown_server;
 
@@ -205,7 +210,8 @@ void setup_sighandlers(void) {
 	}
 }
 
-void shutdown_server(int sig) {
+void shutdown_server(int sig)
+{
 	printf("\nShutting down...\n");
 
 	int status = close(server->fd);
