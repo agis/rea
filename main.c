@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
 
 			if (!added) {
 				fprintf(stderr, "Could not find room for client fd: %d\n", fd);
-				exit(EXIT_FAILURE);
+				continue;
 			}
 
 			FD_SET(fd, &rfds);

@@ -3,10 +3,19 @@
 
 #define MAX_CLIENTS 4096
 #define RECV_BUFFER 4096
+
+/*
+ * Max. limit of queued connections passed to listen(2).
+ * After that the client _may_ * receive ECONNREFUSED.
+ * This is just a hint though.
+ */
 #define RECV_BACKLOG 50
 
 struct Server {
+	/* the file descriptor of the listening socket */
 	int fd;
+
+	/* the address we will bind the listening socket to */
 	struct addrinfo *addr;
 };
 
