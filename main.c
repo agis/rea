@@ -10,15 +10,18 @@
 #include <signal.h>
 #include <netdb.h>
 #include "main.h"
+#include "http_parser.h"
+
+fd_set rfds;
+fd_set wfds;
+struct Client *clients[MAX_CLIENTS];
 
 int main(int argc, char *argv[])
 {
 	int status, maxfd, i, fd, added;
-	char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
-	fd_set rfds, wfds;
-	struct Client *clients[MAX_CLIENTS];
+	struct Client *c;
 
-	memset(clients, 0, sizeof(struct Client*)*MAX_CLIENTS);
+	memset(clients, 0, sizeof(struct Client *)*MAX_CLIENTS);
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s <port>\n", argv[0]);
@@ -34,11 +37,18 @@ int main(int argc, char *argv[])
 		maxfd = server->fd;
 
 		for (i = 0; i < MAX_CLIENTS; i++) {
-			if (clients[i]) {
-				fd = clients[i]->fd;
-				FD_SET(fd, &rfds);
+			c = clients[i];
+
+			if (c) {
+				if (c->to_reply == 1) {
+					FD_SET(c->fd, &wfds);
+					c->to_reply = 0;
+				} else {
+					FD_SET(c->fd, &rfds);
+				}
+
 				if (fd > maxfd) {
-					maxfd = fd;
+					maxfd = c->fd;
 				}
 			}
 		}
@@ -55,13 +65,12 @@ int main(int argc, char *argv[])
 				if (errno == EAGAIN || errno == EWOULDBLOCK) {
 					continue;
 				}
-				printf("%d\n", fd);
 				err(EXIT_FAILURE, "Socket accept error");
 			}
 
 			added = 0;
 			for (i = 0; i < MAX_CLIENTS; i++) {
-				if (!clients[i]) {
+				if (clients[i] == 0) {
 					clients[i] = make_client(fd);
 					added = 1;
 					if (fd > maxfd) {
@@ -76,38 +85,22 @@ int main(int argc, char *argv[])
 				continue;
 			}
 
-			FD_SET(fd, &rfds);
-
 			printf("Accepted connection! (fd: %d)\n", fd);
+
+			continue;
 		}
 
 		for (i = 0; i < MAX_CLIENTS; i++) {
-			if (!clients[i]) {
+			c = clients[i];
+
+			if (c == 0) {
 				continue;
 			}
 
-			fd = clients[i]->fd;
-
-			if (FD_ISSET(fd, &rfds)) {
-				/* TODO: We assume that we got the full message in a single read */
-				status = recv(fd, &(clients[i]->buf), RECV_BUFFER-1, 0);
-
-				if (status < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-					err(EXIT_FAILURE, "Message recv error (client: %d)\n", fd);
-				} else if (status == 0) {
-					printf("Connection closed by client %d.\n", fd);
-					close_client(fd, &rfds, &wfds, clients);
-					break;
-				} else if (status > 0) {
-					clients[i]->buf[RECV_BUFFER-1] = '\0';
-					printf("Message from client %d: %.*s\n", fd, status+1, clients[i]->buf);
-					FD_SET(fd, &wfds);
-				}
-			}
-
-			if (FD_ISSET(fd, &wfds)) {
-				send(fd, resp, strlen(resp), 0);
-				close_client(fd, &rfds, &wfds, clients);
+			if (FD_ISSET(c->fd, &wfds)) {
+				respond(c);
+			} else if (FD_ISSET(c->fd, &rfds) && c->cstate == CONNECTED) {
+				read_response(c);
 			}
 		}
 	}
@@ -162,23 +155,86 @@ void setup_and_listen(char *port)
 	printf("Listening on 0.0.0.0:%s ...\n", port);
 }
 
-struct Client * make_client(int fd)
+int on_message_complete_cb(http_parser *p)
 {
-	int i;
+	struct Client *c = p->data;
 
-	struct Client *c = (struct Client *)malloc(sizeof(struct Client));
+	c->pstate = SUCCESS;
+	c->to_reply = 1;
+	//printf("message completed from %d\n", c->fd);
+
+	return 0;
+}
+
+void read_response(struct Client *c)
+{
+	int nparsed;
+	int status = recv(c->fd, c->buf, RECV_BUFFER, 0);
+
+	if (status < 0 && errno != EAGAIN && errno != EWOULDBLOCK ) {
+		// TODO: Leave this on until we work on the possible errors
+		// from recv. In the future we should handle them.
+		err(EXIT_FAILURE, "Message recv error (client: %d)\n", c->fd);
+	} else {
+		if (status == 0) {
+			printf("Client %d closed the connection.\n", c->fd);
+			c->cstate = DISCONNECTED;
+			c->to_reply = 1;
+		}
+
+		nparsed = http_parser_execute(c->parser, c->parser_settings, c->buf, status);
+
+		if (nparsed != status) {
+			c->pstate = ERROR;
+			c->to_reply = 1;
+			printf("Parse error: %s\n", http_errno_description(HTTP_PARSER_ERRNO(c->parser)));
+		}
+	}
+}
+
+void respond(struct Client *c)
+{
+	char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
+	char *resp400 = "HTTP/1.1 400 Bad Request\r\n\r\n";
+
+	if (c->pstate == ERROR) {
+		send(c->fd, resp400, strlen(resp400), 0);
+		close_client(c->fd);
+	} else if (c->pstate == SUCCESS) {
+		send(c->fd, resp, strlen(resp), 0);
+		close_client(c->fd);
+	}
+}
+
+struct Client *make_client(int fd)
+{
+	http_parser_settings *settings = malloc(sizeof(http_parser_settings));
+	http_parser *parser = malloc(sizeof(http_parser));
+
+	http_parser_settings_init(settings);
+	http_parser_init(parser, HTTP_REQUEST);
+
+	settings->on_message_complete = on_message_complete_cb;
+
+	struct Client *c = malloc(sizeof(struct Client));
 	if (!c) {
 		fprintf(stderr, "Couldn't allocate memory for connection %d\n", fd);
 		exit(EXIT_FAILURE);
 	}
 
 	c->fd = fd;
+	c->cstate = CONNECTED;
+	c->pstate = IN_PROGRESS;
+	c->to_reply = 0;
 	memset(c->buf, 0, RECV_BUFFER);
+	c->parser_settings = settings;
+	c->parser = parser;
+	c->parser->data = c;
 
 	return c;
 }
 
-void close_client(int fd, fd_set *rfds, fd_set *wfds, struct Client *clients[])
+void close_client(int fd)
 {
 	int i;
 
@@ -187,8 +243,8 @@ void close_client(int fd, fd_set *rfds, fd_set *wfds, struct Client *clients[])
 		exit(EXIT_FAILURE);
 	}
 
-	FD_CLR(fd, rfds);
-	FD_CLR(fd, wfds);
+	FD_CLR(fd, &rfds);
+	FD_CLR(fd, &wfds);
 
 	for (i = 0; i < MAX_CLIENTS; i++) {
 		if (clients[i] && clients[i]->fd == fd) {
