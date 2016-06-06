@@ -9,7 +9,7 @@
 #include <sys/select.h>
 #include <signal.h>
 #include <netdb.h>
-#include "main.h"
+#include "rea.h"
 #include "http_parser.h"
 
 fd_set rfds;
