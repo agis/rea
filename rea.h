@@ -13,23 +13,35 @@
 
 #include "http_parser.h"
 
-/* Read/write file descriptor sets for select(2) */
+/*
+ * Read/write file descriptor sets.
+ */
 extern fd_set rfds;
 extern fd_set wfds;
 
-struct Server {
+
+/*
+ * Server represents the listening server.
+ */
+typedef struct Server {
 	/* the file descriptor of the listening socket */
 	int fd;
 
 	/* the address we will bind the listening socket to */
 	struct addrinfo *addr;
-};
+} Server;
 
-/* server is the global Server instance */
-struct Server *server;
 
-/* Client represents a connection of an active client. */
-struct Client {
+/*
+ * server points to a global Server instance.
+ */
+Server *server;
+
+
+/*
+ * Client represents a connection of an active client.
+ */
+typedef struct Client {
 	int fd;
 
 	/* cstate represents the connection state of the client socket */
@@ -38,58 +50,67 @@ struct Client {
 	/* pstate represets the parse state of the client request */
 	enum { IN_PROGRESS, ERROR, SUCCESS } pstate;
 
-	// TODO: this smells; we should make it simpler.
+	// TODO: this smells...
 	int to_reply;
 
 	char buf[RECV_BUFFER];
 
 	http_parser *parser;
 	http_parser_settings *parser_settings;
-};
+} Client;
+
 
 /* clients contains all the active Clients */
-extern struct Client *clients[MAX_CLIENTS];
+extern Client *clients[MAX_CLIENTS];
+
 
 /*
  * Creates a Server on a listening socket, binds it to the specified port and
- * sets its to the server global variable
+ * sets its to the server global variable.
  */
 void setup_and_listen(char *port);
+
 
 /*
  * Registers signal handlers for shutting down the server gracefully etc.
  */
 void setup_sighandlers(void);
 
+
 /*
- * Shuts down the server gracefully
+ * Shuts down the server gracefully.
  */
 void shutdown_server(int sig);
+
 
 /*
  * Callback executed when a request is fully parsed successfully.
  */
 int on_message_complete_cb(http_parser *p);
 
+
 /*
  * Reads bytes from a connected Client and parses them.
  */
-void read_response(struct Client *c);
+void read_response(Client *c);
+
 
 /*
  * Writes the response back to the client.
  */
-void respond(struct Client *c);
+void respond(Client *c);
+
 
 /*
- * make_client Initializes a new Client from the given file descriptor and
+ * make_client initializes a new Client from the given file descriptor and
  * returns a pointer to it.
  */
-struct Client *make_client(int fd);
+Client *make_client(int fd);
+
 
 /*
- * close_client closes the socket of a connected client and performs some
- * bookkeeping work.
+ * Closes the socket of a connected client and performs some
+ * bookkeeping.
  */
 void close_client(int fd);
 

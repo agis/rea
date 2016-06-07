@@ -14,14 +14,14 @@
 
 fd_set rfds;
 fd_set wfds;
-struct Client *clients[MAX_CLIENTS];
+Client *clients[MAX_CLIENTS];
 
 int main(int argc, char *argv[])
 {
 	int status, maxfd, i, fd, added;
-	struct Client *c;
+	Client *c;
 
-	memset(clients, 0, sizeof(struct Client *)*MAX_CLIENTS);
+	memset(clients, 0, sizeof(Client *)*MAX_CLIENTS);
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s <port>\n", argv[0]);
@@ -106,13 +106,14 @@ int main(int argc, char *argv[])
 	}
 }
 
+
 void setup_and_listen(char *port)
 {
 	int status, fd;
 	struct addrinfo hints;
 	struct addrinfo *ai;
 
-	server = (struct Server *)malloc(sizeof(struct Server));
+	server = (Server *)malloc(sizeof(Server));
 	if (!server) {
 		fprintf(stderr, "Couldn't allocate memory for starting the server\n");
 		exit(EXIT_FAILURE);
@@ -155,18 +156,19 @@ void setup_and_listen(char *port)
 	printf("Listening on 0.0.0.0:%s ...\n", port);
 }
 
+
 int on_message_complete_cb(http_parser *p)
 {
-	struct Client *c = p->data;
+	Client *c = p->data;
 
 	c->pstate = SUCCESS;
 	c->to_reply = 1;
-	//printf("message completed from %d\n", c->fd);
 
 	return 0;
 }
 
-void read_response(struct Client *c)
+
+void read_response(Client *c)
 {
 	int nparsed;
 	int status = recv(c->fd, c->buf, RECV_BUFFER, 0);
@@ -192,7 +194,8 @@ void read_response(struct Client *c)
 	}
 }
 
-void respond(struct Client *c)
+
+void respond(Client *c)
 {
 	char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
 	char *resp400 = "HTTP/1.1 400 Bad Request\r\n\r\n";
@@ -206,7 +209,8 @@ void respond(struct Client *c)
 	}
 }
 
-struct Client *make_client(int fd)
+
+Client *make_client(int fd)
 {
 	http_parser_settings *settings = malloc(sizeof(http_parser_settings));
 	http_parser *parser = malloc(sizeof(http_parser));
@@ -216,7 +220,7 @@ struct Client *make_client(int fd)
 
 	settings->on_message_complete = on_message_complete_cb;
 
-	struct Client *c = malloc(sizeof(struct Client));
+	Client *c = malloc(sizeof(Client));
 	if (!c) {
 		fprintf(stderr, "Couldn't allocate memory for connection %d\n", fd);
 		exit(EXIT_FAILURE);
@@ -233,6 +237,7 @@ struct Client *make_client(int fd)
 
 	return c;
 }
+
 
 void close_client(int fd)
 {
@@ -255,6 +260,7 @@ void close_client(int fd)
 	}
 }
 
+
 void setup_sighandlers(void)
 {
 	struct sigaction act;
@@ -265,6 +271,7 @@ void setup_sighandlers(void)
 		err(EXIT_FAILURE, "Error setting up signal handler\n");
 	}
 }
+
 
 void shutdown_server(int sig)
 {
