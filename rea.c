@@ -21,8 +21,6 @@ int main(int argc, char *argv[])
 	int status, maxfd, i, fd, added;
 	Client *c;
 
-	memset(clients, 0, sizeof(Client *)*MAX_CLIENTS);
-
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s <port>\n", argv[0]);
 		exit(EXIT_FAILURE);
