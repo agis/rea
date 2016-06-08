@@ -6,18 +6,22 @@
 #include <err.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/select.h>
 #include <signal.h>
 #include <netdb.h>
+#include <sys/epoll.h>
 #include "rea.h"
 
 fd_set rfds;
 fd_set wfds;
+Server *server;
 Client *clients[MAX_CLIENTS];
+int epfd;
 
 int main(int argc, char *argv[])
 {
-	int status, maxfd, i, fd, added;
+	int status, i, fd, added, nfds;
+	struct epoll_event ev;
+	struct epoll_event evs[MAX_EP_EVENTS];
 	Client *c;
 
 	if (argc != 2) {
@@ -27,74 +31,70 @@ int main(int argc, char *argv[])
 
 	setupAndListen(argv[1]);
 
-	while(1) {
-		FD_ZERO(&rfds);
-		FD_ZERO(&wfds);
-		FD_SET(server->fd, &rfds);
-		maxfd = server->fd;
+	epfd = epoll_create1(0);
+	if (epfd == -1) {
+		err(EXIT_FAILURE, "epoll_create error");
+	}
 
-		for (i = 0; i < MAX_CLIENTS; i++) {
-			c = clients[i];
+	ev.events = EPOLLIN;
+	ev.data.ptr = server;
 
-			if (c) {
-				if (c->to_reply == 1) {
-					FD_SET(c->fd, &wfds);
-					c->to_reply = 0;
-				} else {
-					FD_SET(c->fd, &rfds);
-				}
+	status = epoll_ctl(epfd, EPOLL_CTL_ADD, server->fd, &ev);
+	if (status == -1) {
+		err(EXIT_FAILURE, "epoll_ctl error");
+	}
 
-				if (fd > maxfd) {
-					maxfd = c->fd;
-				}
-			}
+	for (;;) {
+		nfds = epoll_wait(epfd, evs, MAX_EP_EVENTS, -1);
+		if (nfds == -1) {
+			err(EXIT_FAILURE, "epoll_wait error");
 		}
 
-		/* TODO: also add exception set */
-		status = select(maxfd+1, &rfds, &wfds, NULL, NULL);
-		if (status < 0) {
-			err(EXIT_FAILURE, "Socket select error");
-		}
-
-		if (FD_ISSET(server->fd, &rfds)) {
-			fd = accept4(server->fd, server->addr->ai_addr, &(server->addr->ai_addrlen), SOCK_NONBLOCK);
-			if (fd < 0) {
-				if (errno == EAGAIN || errno == EWOULDBLOCK) {
-					continue;
-				}
-				err(EXIT_FAILURE, "Socket accept error");
-			}
-
-			added = 0;
-			for (i = 0; i < MAX_CLIENTS; i++) {
-				if (clients[i] == 0) {
-					clients[i] = makeClient(fd);
-					added = 1;
-					if (fd > maxfd) {
-						maxfd = fd;
+		for (i = 0; i < nfds; i++) {
+			if (((Server *)evs[i].data.ptr)->fd == server->fd) {
+				fd = accept4(server->fd, server->addr->ai_addr,
+					&(server->addr->ai_addrlen), SOCK_NONBLOCK);
+				if (fd < 0) {
+					if (errno == EAGAIN || errno == EWOULDBLOCK) {
+						continue;
 					}
-					break;
+					err(EXIT_FAILURE, "Socket accept error");
 				}
-			}
 
-			if (!added) {
-				fprintf(stderr, "Could not find room for client fd: %d\n", fd);
-			}
+				added = 0;
+				for (i = 0; i < MAX_CLIENTS; i++) {
+					if (clients[i] == 0) {
+						clients[i] = makeClient(fd);
+						added = 1;
+						break;
+					}
+				}
+				if (!added) {
+					fprintf(stderr, "Could not find room for client fd: %d\n", fd);
+				}
 
-			printf("Accepted connection! (fd: %d)\n", fd);
-		}
+				ev.events = EPOLLIN;
+				ev.data.ptr = clients[i];
+				status = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
+				if (status == -1) {
+					err(EXIT_FAILURE, "epoll_ctl error");
+				}
 
-		for (i = 0; i < MAX_CLIENTS; i++) {
-			c = clients[i];
+				printf("Accepted connection! (fd: %d)\n", clients[i]->fd);
+			} else {
+				c = (Client *)evs[i].data.ptr;
 
-			if (c == 0) {
-				continue;
-			}
-
-			if (FD_ISSET(c->fd, &wfds)) {
-				respond(c);
-			} else if (FD_ISSET(c->fd, &rfds) && c->cstate == CONNECTED) {
-				readResponse(c);
+				if (evs[i].events & EPOLLERR) {
+					closeClient(c);
+				} else if (evs[i].events & EPOLLIN) {
+					if (c->replied) {
+						closeClient(c);
+					} else if (c->cstate == CONNECTED) {
+						readRequest(c);
+					}
+				} else if ((evs[i].events & EPOLLOUT) && !(c->replied)) {
+					respond(c);
+				}
 			}
 		}
 	}
@@ -151,55 +151,91 @@ void setupAndListen(char *port)
 }
 
 
-int on_message_complete_cb(http_parser *p)
+void readRequest(Client *c)
 {
-	Client *c = p->data;
+	int nparsed, status;
+	struct epoll_event ev;
 
-	c->pstate = SUCCESS;
-	c->to_reply = 1;
-
-	return 0;
-}
-
-
-void readResponse(Client *c)
-{
-	int nparsed;
-	int status = recv(c->fd, c->buf, RECV_BUFFER, 0);
-
-	if (status < 0 && errno != EAGAIN && errno != EWOULDBLOCK ) {
-		// TODO: Leave this on until we work on the possible errors
-		// from recv. In the future we should handle them.
-		err(EXIT_FAILURE, "Message recv error (client: %d)\n", c->fd);
+	status = recv(c->fd, c->buf, RECV_BUFFER, 0);
+	if (status < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			return;
+		} else {
+			err(EXIT_FAILURE, "Message recv error (client: %d)\n", c->fd); }
 	} else {
+		nparsed = http_parser_execute(c->parser, c->parser_settings, c->buf, status);
+		if (nparsed != status) {
+			c->pstate = ERROR;
+			ev.events = EPOLLOUT;
+			ev.data.ptr = c;
+
+			if (epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &ev) == -1) {
+				err(EXIT_FAILURE, "epoll_ctl error");
+			}
+
+			printf("Parse error (client %d): %s\n",
+					c->fd, http_errno_description(HTTP_PARSER_ERRNO(c->parser)));
+		}
+
 		if (status == 0) {
 			printf("Client %d closed the connection.\n", c->fd);
 			c->cstate = DISCONNECTED;
-			c->to_reply = 1;
-		}
-
-		nparsed = http_parser_execute(c->parser, c->parser_settings, c->buf, status);
-
-		if (nparsed != status) {
-			c->pstate = ERROR;
-			c->to_reply = 1;
-			printf("Parse error: %s\n", http_errno_description(HTTP_PARSER_ERRNO(c->parser)));
+			closeClient(c);
 		}
 	}
 }
 
 
+int on_message_complete_cb(http_parser *p)
+{
+	struct epoll_event ev;
+	Client *c = p->data;
+
+	c->pstate = SUCCESS;
+	ev.events = EPOLLOUT;
+	ev.data.ptr = c;
+
+	if (epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &ev) == -1) {
+		err(EXIT_FAILURE, "epoll_ctl error");
+	}
+
+	return 0;
+}
+
+
+
 void respond(Client *c)
 {
+	int status;
 	char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nCool\r\n\r\n";
 	char *resp400 = "HTTP/1.1 400 Bad Request\r\n\r\n";
 
 	if (c->pstate == ERROR) {
-		send(c->fd, resp400, strlen(resp400), 0);
-		closeClient(c->fd);
+		status = send(c->fd, resp400, strlen(resp400), 0);
+		if (status == -1) {
+			err(EXIT_FAILURE, "send error (client: %d)", c->fd);
+		}
+
+		status = epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL);
+		if (status == -1) {
+			err(EXIT_FAILURE, "epoll_ctl error");
+		}
+
+		c->replied = 1;
+		closeClient(c);
 	} else if (c->pstate == SUCCESS) {
-		send(c->fd, resp, strlen(resp), 0);
-		closeClient(c->fd);
+		status = send(c->fd, resp, strlen(resp), 0);
+		if (status == -1) {
+			err(EXIT_FAILURE, "send error (client: %d)", c->fd);
+		}
+
+		status = epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL);
+		if (status == -1) {
+			err(EXIT_FAILURE, "epoll_ctl error");
+		}
+
+		c->replied = 1;
+		closeClient(c);
 	}
 }
 
@@ -223,7 +259,7 @@ Client *makeClient(int fd)
 	c->fd = fd;
 	c->cstate = CONNECTED;
 	c->pstate = IN_PROGRESS;
-	c->to_reply = 0;
+	c->replied = 0;
 	memset(c->buf, 0, RECV_BUFFER);
 	c->parser_settings = settings;
 	c->parser = parser;
@@ -233,25 +269,28 @@ Client *makeClient(int fd)
 }
 
 
-void closeClient(int fd)
+void closeClient(Client *c)
 {
-	int i;
+	int i, found;
 
-	if (close(fd) < 0) {
-		fprintf(stderr, "Client %d close error\n", fd);
-		exit(EXIT_FAILURE);
+	if (close(c->fd) < 0) {
+		err(EXIT_FAILURE, "close(2) error");
 	}
 
-	FD_CLR(fd, &rfds);
-	FD_CLR(fd, &wfds);
-
+	found = 0;
 	for (i = 0; i < MAX_CLIENTS; i++) {
-		if (clients[i] && clients[i]->fd == fd) {
-			free(clients[i]);
+		if (clients[i] && clients[i] == c) {
 			clients[i] = 0;
-			return;
+			found = 1;
+			break;
 		}
 	}
+	if (found != 1) {
+		err(EXIT_FAILURE, "Couldn't find client fd to close");
+	}
+
+	c->cstate = DISCONNECTED;
+	free(c);
 }
 
 
