@@ -10,7 +10,6 @@
 #include <signal.h>
 #include <netdb.h>
 #include "rea.h"
-#include "http_parser.h"
 
 fd_set rfds;
 fd_set wfds;
