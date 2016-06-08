@@ -79,12 +79,9 @@ int main(int argc, char *argv[])
 
 			if (!added) {
 				fprintf(stderr, "Could not find room for client fd: %d\n", fd);
-				continue;
 			}
 
 			printf("Accepted connection! (fd: %d)\n", fd);
-
-			continue;
 		}
 
 		for (i = 0; i < MAX_CLIENTS; i++) {
