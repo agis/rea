@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	setup_and_listen(argv[1]);
+	setupAndListen(argv[1]);
 
 	while(1) {
 		FD_ZERO(&rfds);
@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
 			added = 0;
 			for (i = 0; i < MAX_CLIENTS; i++) {
 				if (clients[i] == 0) {
-					clients[i] = make_client(fd);
+					clients[i] = makeClient(fd);
 					added = 1;
 					if (fd > maxfd) {
 						maxfd = fd;
@@ -94,14 +94,14 @@ int main(int argc, char *argv[])
 			if (FD_ISSET(c->fd, &wfds)) {
 				respond(c);
 			} else if (FD_ISSET(c->fd, &rfds) && c->cstate == CONNECTED) {
-				read_response(c);
+				readResponse(c);
 			}
 		}
 	}
 }
 
 
-void setup_and_listen(char *port)
+void setupAndListen(char *port)
 {
 	int status, fd;
 	struct addrinfo hints;
@@ -145,7 +145,7 @@ void setup_and_listen(char *port)
 	server->fd = fd;
 	server->addr = ai;
 
-	setup_sighandlers();
+	setupSighandlers();
 
 	printf("Listening on 0.0.0.0:%s ...\n", port);
 }
@@ -162,7 +162,7 @@ int on_message_complete_cb(http_parser *p)
 }
 
 
-void read_response(Client *c)
+void readResponse(Client *c)
 {
 	int nparsed;
 	int status = recv(c->fd, c->buf, RECV_BUFFER, 0);
@@ -196,15 +196,15 @@ void respond(Client *c)
 
 	if (c->pstate == ERROR) {
 		send(c->fd, resp400, strlen(resp400), 0);
-		close_client(c->fd);
+		closeClient(c->fd);
 	} else if (c->pstate == SUCCESS) {
 		send(c->fd, resp, strlen(resp), 0);
-		close_client(c->fd);
+		closeClient(c->fd);
 	}
 }
 
 
-Client *make_client(int fd)
+Client *makeClient(int fd)
 {
 	http_parser_settings *settings = malloc(sizeof(http_parser_settings));
 	http_parser *parser = malloc(sizeof(http_parser));
@@ -233,7 +233,7 @@ Client *make_client(int fd)
 }
 
 
-void close_client(int fd)
+void closeClient(int fd)
 {
 	int i;
 
@@ -255,10 +255,10 @@ void close_client(int fd)
 }
 
 
-void setup_sighandlers(void)
+void setupSighandlers(void)
 {
 	struct sigaction act;
-	act.sa_handler = shutdown_server;
+	act.sa_handler = shutdownServer;
 
 	int status = sigaction(SIGINT, &act, NULL);
 	if (status != 0) {
@@ -267,7 +267,7 @@ void setup_sighandlers(void)
 }
 
 
-void shutdown_server(int sig)
+void shutdownServer(int sig)
 {
 	printf("\nShutting down...\n");
 

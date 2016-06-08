@@ -68,19 +68,19 @@ extern Client *clients[MAX_CLIENTS];
  * Creates a Server on a listening socket, binds it to the specified port and
  * sets its to the server global variable.
  */
-void setup_and_listen(char *port);
+void setupAndListen(char *port);
 
 
 /*
  * Registers signal handlers for shutting down the server gracefully etc.
  */
-void setup_sighandlers(void);
+void setupSighandlers(void);
 
 
 /*
  * Shuts down the server gracefully.
  */
-void shutdown_server(int sig);
+void shutdownServer(int sig);
 
 
 /*
@@ -92,7 +92,7 @@ int on_message_complete_cb(http_parser *p);
 /*
  * Reads bytes from a connected Client and parses them.
  */
-void read_response(Client *c);
+void readResponse(Client *c);
 
 
 /*
@@ -102,16 +102,16 @@ void respond(Client *c);
 
 
 /*
- * make_client initializes a new Client from the given file descriptor and
+ * makeClient initializes a new Client from the given file descriptor and
  * returns a pointer to it.
  */
-Client *make_client(int fd);
+Client *makeClient(int fd);
 
 
 /*
  * Closes the socket of a connected client and performs some
  * bookkeeping.
  */
-void close_client(int fd);
+void closeClient(int fd);
 
 #endif /* REA_MAIN_H */
