@@ -1,8 +1,9 @@
 #ifndef REA_MAIN_H
 #define REA_MAIN_H
 
-#define MAX_CLIENTS 4096
+#define MAX_CLIENTS 8000
 #define RECV_BUFFER 4096
+#define MAX_EP_EVENTS 10240
 
 /*
  * Max. limit of queued connections passed to listen(2).
@@ -20,6 +21,10 @@ extern fd_set rfds;
 extern fd_set wfds;
 
 
+/* epoll instance fd */
+extern int epfd;
+
+
 /*
  * Server represents the listening server.
  */
@@ -35,7 +40,7 @@ typedef struct Server {
 /*
  * server points to a global Server instance.
  */
-Server *server;
+extern Server *server;
 
 
 /*
@@ -50,13 +55,12 @@ typedef struct Client {
 	/* pstate represets the parse state of the client request */
 	enum { IN_PROGRESS, ERROR, SUCCESS } pstate;
 
-	// TODO: this smells...
-	int to_reply;
-
 	char buf[RECV_BUFFER];
 
 	http_parser *parser;
 	http_parser_settings *parser_settings;
+	int replied;
+
 } Client;
 
 
@@ -92,7 +96,7 @@ int on_message_complete_cb(http_parser *p);
 /*
  * Reads bytes from a connected Client and parses them.
  */
-void readResponse(Client *c);
+void readRequest(Client *c);
 
 
 /*
@@ -112,6 +116,6 @@ Client *makeClient(int fd);
  * Closes the socket of a connected client and performs some
  * bookkeeping.
  */
-void closeClient(int fd);
+void closeClient(Client *c);
 
 #endif /* REA_MAIN_H */
