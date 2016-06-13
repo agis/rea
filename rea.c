@@ -273,6 +273,7 @@ void closeClient(Client *c)
 {
 	int i, found;
 
+	/* this also removes the fd from the epoll set */
 	if (close(c->fd) < 0) {
 		err(EXIT_FAILURE, "close(2) error");
 	}
