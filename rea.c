@@ -216,22 +216,12 @@ void respond(Client *c)
 			err(EXIT_FAILURE, "send error (client: %d)", c->fd);
 		}
 
-		status = epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL);
-		if (status == -1) {
-			err(EXIT_FAILURE, "epoll_ctl error");
-		}
-
 		c->replied = 1;
 		closeClient(c);
 	} else if (c->pstate == SUCCESS) {
 		status = send(c->fd, resp, strlen(resp), 0);
 		if (status == -1) {
 			err(EXIT_FAILURE, "send error (client: %d)", c->fd);
-		}
-
-		status = epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL);
-		if (status == -1) {
-			err(EXIT_FAILURE, "epoll_ctl error");
 		}
 
 		c->replied = 1;
@@ -271,7 +261,7 @@ Client *makeClient(int fd)
 
 void closeClient(Client *c)
 {
-	int i, found;
+	int i, found, status;
 
 	/* this also removes the fd from the epoll set */
 	if (close(c->fd) < 0) {
@@ -288,6 +278,12 @@ void closeClient(Client *c)
 	}
 	if (found != 1) {
 		err(EXIT_FAILURE, "Couldn't find client fd to close");
+	}
+
+	/* passing NULL only works in kernel versions 2.6.9+ */
+	status = epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL);
+	if (status == -1) {
+		err(EXIT_FAILURE, "epoll_ctl error");
 	}
 
 	c->cstate = DISCONNECTED;
