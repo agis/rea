@@ -1,5 +1,7 @@
 # rea
-rea is a toy HTTP/1.1 server written in C. It has an event-driven architecture and uses non-blocking I/O (`select(2)` for now) and can handle many concurrent clients efficiently; within a single thread.
+rea is a toy HTTP/1.1 server written in C. It's an attempt to better understand how non-blocking I/O works.
+
+It has an event-driven architecture using `epoll` and can handle many concurrent clients efficiently within a single thread.
 
 It's nowhere near functional yet and just parses requests and writes dummy responses back.
 
