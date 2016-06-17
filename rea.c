@@ -44,7 +44,7 @@ int main(int argc, char *argv[])
 		err(EXIT_FAILURE, "epoll_ctl error");
 	}
 
-	for (;;) {
+	while(1) {
 		nfds = epoll_wait(epfd, evs, MAX_EP_EVENTS, -1);
 		if (nfds == -1) {
 			err(EXIT_FAILURE, "epoll_wait error");
