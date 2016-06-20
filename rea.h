@@ -14,12 +14,6 @@
 
 #include "http_parser.h"
 
-/*
- * Read/write file descriptor sets.
- */
-extern fd_set rfds;
-extern fd_set wfds;
-
 
 /* epoll instance fd */
 extern int epfd;

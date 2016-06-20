@@ -11,8 +11,6 @@
 #include <sys/epoll.h>
 #include "rea.h"
 
-fd_set rfds;
-fd_set wfds;
 Server *server;
 Client *clients[MAX_CLIENTS];
 int epfd;
