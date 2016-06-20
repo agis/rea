@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
 
 	status = epoll_ctl(epfd, EPOLL_CTL_ADD, server->fd, &ev);
 	if (status == -1) {
-		err(EXIT_FAILURE, "epoll_ctl error");
+		err(EXIT_FAILURE, "6epoll_ctl error");
 	}
 
 	while(1) {
@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
 				ev.data.ptr = clients[i];
 				status = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
 				if (status == -1) {
-					err(EXIT_FAILURE, "epoll_ctl error");
+					err(EXIT_FAILURE, "2epoll_ctl error");
 				}
 
 				printf("Accepted connection! (fd: %d)\n", clients[i]->fd);
@@ -168,7 +168,7 @@ void readRequest(Client *c)
 			ev.data.ptr = c;
 
 			if (epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &ev) == -1) {
-				err(EXIT_FAILURE, "epoll_ctl error");
+				err(EXIT_FAILURE, "3epoll_ctl error");
 			}
 
 			printf("Parse error (client %d): %s\n",
@@ -194,7 +194,7 @@ int on_message_complete_cb(http_parser *p)
 	ev.data.ptr = c;
 
 	if (epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &ev) == -1) {
-		err(EXIT_FAILURE, "epoll_ctl error");
+		err(EXIT_FAILURE, "4epoll_ctl error");
 	}
 
 	return 0;
@@ -261,7 +261,13 @@ void closeClient(Client *c)
 {
 	int i, found, status;
 
-	/* this also removes the fd from the epoll set */
+	/* passing NULL only works in kernel versions 2.6.9+ */
+	status = epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL);
+	if (status == -1) {
+		err(EXIT_FAILURE, "5nepoll_ctl error");
+	}
+
+	/* this also removes fd from the epoll set */
 	if (close(c->fd) < 0) {
 		err(EXIT_FAILURE, "close(2) error");
 	}
@@ -276,12 +282,6 @@ void closeClient(Client *c)
 	}
 	if (found != 1) {
 		err(EXIT_FAILURE, "Couldn't find client fd to close");
-	}
-
-	/* passing NULL only works in kernel versions 2.6.9+ */
-	status = epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL);
-	if (status == -1) {
-		err(EXIT_FAILURE, "epoll_ctl error");
 	}
 
 	c->cstate = DISCONNECTED;
