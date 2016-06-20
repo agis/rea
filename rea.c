@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
 
 	status = epoll_ctl(epfd, EPOLL_CTL_ADD, server->fd, &ev);
 	if (status == -1) {
-		err(EXIT_FAILURE, "6epoll_ctl error");
+		err(EXIT_FAILURE, "epoll_ctl error");
 	}
 
 	while(1) {
@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
 				ev.data.ptr = clients[i];
 				status = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
 				if (status == -1) {
-					err(EXIT_FAILURE, "2epoll_ctl error");
+					err(EXIT_FAILURE, "epoll_ctl error");
 				}
 
 				printf("Accepted connection! (fd: %d)\n", clients[i]->fd);
@@ -168,7 +168,7 @@ void readRequest(Client *c)
 			ev.data.ptr = c;
 
 			if (epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &ev) == -1) {
-				err(EXIT_FAILURE, "3epoll_ctl error");
+				err(EXIT_FAILURE, "epoll_ctl error");
 			}
 
 			printf("Parse error (client %d): %s\n",
@@ -194,7 +194,7 @@ int on_message_complete_cb(http_parser *p)
 	ev.data.ptr = c;
 
 	if (epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &ev) == -1) {
-		err(EXIT_FAILURE, "4epoll_ctl error");
+		err(EXIT_FAILURE, "epoll_ctl error");
 	}
 
 	return 0;
